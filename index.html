@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>24人制順位予測・安定度計算ツール (最終版)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h1,
+        h2 {
+            color: #0056b3;
+            border-bottom: 2px solid #0056b3;
+            padding-bottom: 10px;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ccc;
+            margin-bottom: 20px;
+        }
+
+        .tab-button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background-color: transparent;
+            font-size: 16px;
+            position: relative;
+            color: #000;
+        }
+
+        .tab-button.active {
+            font-weight: bold;
+            color: #0056b3;
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background-color: #0056b3;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .grid-input {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        label {
+            font-weight: bold;
+            margin-top: 15px;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input[type="number"],
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .result-box {
+            background-color: #e9f5ff;
+            border: 1px solid #b3d7ff;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 4px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #004085;
+        }
+
+        .button-group {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        #progress-bar {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+            height: 20px;
+        }
+
+        #progress-fill {
+            width: 0%;
+            height: 100%;
+            background-color: #4caf50;
+            transition: width 0.1s;
+        }
+
+        .player-grid {
+            display: grid;
+            grid-template-columns: 40px 1fr 120px;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .player-grid>span {
+            font-weight: bold;
+        }
+
+        .player-grid>input {
+            width: 100%;
+        }
+
+        .description {
+            font-size: 0.9em;
+            color: #555;
+            margin-bottom: 15px;
+        }
+
+        /* グラフ用スタイル */
+        #score-graph-wrapper {
+            margin-top: 25px;
+        }
+
+        #score-graph-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            height: 220px;
+            border-left: 2px solid #ccc;
+            border-bottom: 2px solid #ccc;
+            padding: 10px 0;
+        }
+
+        .graph-bar-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+            text-align: center;
+            height: 100%;
+            justify-content: flex-end;
+        }
+
+        .bar {
+            background-color: #007bff;
+            width: 80%;
+            border-radius: 4px 4px 0 0;
+            transition: height 0.5s ease-out;
+            min-height: 1px;
+        }
+
+        .bar-label {
+            font-size: 0.8em;
+            margin-top: 5px;
+        }
+
+        .bar-value {
+            font-size: 0.7em;
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>24人制順位予測・安定度計算ツール (最終版)</h1>
+
+        <div class="tabs">
+            <button class="tab-button" onclick="openTab(event, 'prediction')">順位予測</button>
+            <button class="tab-button active" onclick="openTab(event, 'stability')">安定度計算</button>
+        </div>
+
+        <div id="stability" class="tab-content active">
+            <h2>安定度計算 (12回レース用)</h2>
+            <p class="description">12回のゲームで取得した順位を入力し、あなたのプレイスタイルの「安定度」を計算します。</p>
+            <label>12回分の順位 (1位~24位):</label>
+            <div class="grid-input" id="stability-ranks-input"></div>
+            <button onclick="Stability.calculateAndSave()">安定度を計算・保存</button>
+            <div id="stability-result" class="result-box" style="display:none;"></div>
+            <div class="button-group">
+                <button onclick="Stability.exportData()">履歴をエクスポート</button>
+                <button onclick="document.getElementById('import-file').click()">履歴をインポート</button>
+                <input type="file" id="import-file" style="display:none" onchange="Stability.importData(event)">
+                <button onclick="Stability.clearData()">履歴をクリア</button>
+            </div>
+        </div>
+
+        <div id="prediction" class="tab-content">
+            <h2>順位予測</h2>
+            <p class="description">モンテカルロ・シミュレーションを用いて、最終的に目標順位以上を達成できる確率を計算します。</p>
+            <div class="input-group">
+                <div><label for="target-rank">目標順位 (X位以上):</label><input type="number" id="target-rank" min="1" max="24"
+                        value="6"></div>
+                <div><label for="games-played">消化済みゲーム数:</label><input type="number" id="games-played" min="0"
+                        value="0"></div>
+                <div><label for="remaining-games">残りゲーム数:</label><input type="number" id="remaining-games" min="1"
+                        value="12"></div>
+                <div><label for="your-current-rank">あなたの現在の総合順位:</label><input type="number" id="your-current-rank"
+                        min="1" max="24" value="1"></div>
+                <div><label for="your-stability">あなたの安定度 (0~1):</label><input type="number" id="your-stability" min="0"
+                        max="1" step="0.01" value="0.5"></div>
+                <div><label for="simulation-count">シミュレーション回数:</label><input type="number" id="simulation-count"
+                        min="1000" max="100000" step="1000" value="20000"></div>
+            </div>
+            <label>自分と他プレイヤーの現在の点数 (任意):</label>
+            <p class="description">あなたのスコアは、下のリストの該当順位の欄に入力してください。</p>
+            <div id="player-scores"></div>
+            <button onclick="Prediction.run()">確率を計算</button>
+            <div id="progress-bar">
+                <div id="progress-fill"></div>
+            </div>
+            <div id="prediction-result" class="result-box" style="display:none;"></div>
+            <div id="score-graph-wrapper" style="display:none;">
+                <h3>最終得点分布予測 (最頻値±7点)</h3>
+                <div id="score-graph-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- タブ切り替え ---
+        function openTab(evt, tabName) {
+            let i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) tabcontent[i].style.display = "none";
+            tablinks = document.getElementsByClassName("tab-button");
+            for (i = 0; i < tablinks.length; i++) tablinks[i].className = tablinks[i].className.replace(" active", "");
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+        }
+
+        // --- 共通ユーティリティ ---
+        const Utils = {
+            getPointsByRank: (rank) => [0, 15, 12, 10, 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 1][rank] || 0,
+            generateNormalRandom: (mean, stdDev) => {
+                let u1 = 0, u2 = 0;
+                while (u1 === 0) u1 = Math.random();
+                while (u2 === 0) u2 = Math.random();
+                const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+                return z0 * stdDev + mean;
+            }
+        };
+
+        // --- 安定度計算モジュール ---
+        const Stability = {
+            HISTORY_KEY: 'stabilityHistory', MAX_HISTORY: 50,
+            init() {
+                const container = document.getElementById('stability-ranks-input');
+                for (let i = 0; i < 12; i++) {
+                    const input = document.createElement('input'); input.type = 'number'; input.min = 1; input.max = 24;
+                    input.placeholder = `${i + 1}回目`; container.appendChild(input);
+                }
+            },
+            getHistory() { return JSON.parse(localStorage.getItem(this.HISTORY_KEY) || '[]'); },
+            saveHistory(history) { localStorage.setItem(this.HISTORY_KEY, JSON.stringify(history)); },
+            getStats(ranks) {
+                if (ranks.length === 0) return { mean: 12.5, stdDev: 0 };
+                const sum = ranks.reduce((a, b) => a + b, 0); const mean = sum / ranks.length;
+                const variance = ranks.reduce((a, b) => a + (b - mean) ** 2, 0) / ranks.length;
+                return { mean, stdDev: Math.sqrt(variance) };
+            },
+            mapSigmaToStability(sigma) {
+                const sigmaFor1 = 1 / 3, sigmaFor0 = 24 / 3;
+                if (sigma <= sigmaFor1) return 1.0; if (sigma >= sigmaFor0) return 0.0;
+                return (sigmaFor0 - sigma) / (sigmaFor0 - sigmaFor1);
+            },
+            mapStabilityToSigma(stability) {
+                const sigmaFor1 = 1 / 3, sigmaFor0 = 24 / 3;
+                return sigmaFor0 - stability * (sigmaFor0 - sigmaFor1);
+            },
+            calculateAndSave() {
+                const inputs = document.querySelectorAll('#stability-ranks-input input');
+                const ranks = Array.from(inputs).map(i => parseInt(i.value)).filter(v => !isNaN(v) && v >= 1 && v <= 24);
+                if (ranks.length !== 12) { alert('12回分の有効な順位を全て入力してください。'); return; }
+                const { stdDev } = this.getStats(ranks); const stability = this.mapSigmaToStability(stdDev);
+                const history = this.getHistory(); history.push(stability);
+                if (history.length > this.MAX_HISTORY) history.shift();
+                this.saveHistory(history);
+                const avgStability = history.reduce((a, b) => a + b, 0) / history.length;
+                const resultBox = document.getElementById('stability-result'); resultBox.style.display = 'block';
+                resultBox.innerHTML = `今回の安定度: ${stability.toFixed(3)}<br>平均安定度 (履歴${history.length}件): ${avgStability.toFixed(3)}`;
+            },
+            exportData() {
+                const history = this.getHistory();
+                if (history.length === 0) { alert('エクスポートするデータがありません。'); return; }
+                const blob = new Blob([JSON.stringify(history)], { type: 'application/json' });
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'stability_history.json';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            },
+            importData(event) {
+                const file = event.target.files[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = e => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        if (Array.isArray(data) && data.every(item => typeof item === 'number' && item >= 0 && item <= 1)) {
+                            this.saveHistory(data); alert(`${data.length}件の安定度データをインポートしました。`);
+                            document.getElementById('stability-result').style.display = 'none';
+                        } else { throw new Error('無効なファイル形式です。'); }
+                    } catch (error) { alert(`インポートに失敗しました: ${error.message}`); }
+                };
+                reader.readAsText(file); event.target.value = '';
+            },
+            clearData() {
+                if (confirm('本当に安定度の履歴を全て削除しますか？')) {
+                    localStorage.removeItem(this.HISTORY_KEY);
+                    document.getElementById('stability-result').style.display = 'none';
+                    alert('履歴を削除しました。');
+                }
+            }
+        };
+
+        // --- 順位予測モジュール ---
+        const Prediction = {
+            TOTAL_PLAYERS: 24,
+            init() {
+                const container = document.getElementById('player-scores');
+                for (let i = 1; i <= this.TOTAL_PLAYERS; i++) {
+                    const div = document.createElement('div');
+                    div.className = 'player-grid';
+                    div.innerHTML = `<span>${i}位:</span><input type="text" placeholder="Player ${i}"><input type="number" placeholder="点数 (任意)" id="player-score-${i}">`;
+                    container.appendChild(div);
+                }
+            },
+            async run() {
+                // --- 入力値の取得とバリデーション ---
+                const targetRank = parseInt(document.getElementById('target-rank').value);
+                const gamesPlayed = parseInt(document.getElementById('games-played').value);
+                const remainingGames = parseInt(document.getElementById('remaining-games').value);
+                const yourCurrentRank = parseInt(document.getElementById('your-current-rank').value);
+                const yourStability = parseFloat(document.getElementById('your-stability').value);
+                const simulationCount = parseInt(document.getElementById('simulation-count').value);
+                if (isNaN(targetRank) || targetRank < 1 || targetRank > 24) { alert('目標順位は1~24で入力してください。'); return; }
+                if (isNaN(gamesPlayed) || gamesPlayed < 0) { alert('消化済みゲーム数は0以上で入力してください。'); return; }
+                if (isNaN(remainingGames) || remainingGames < 1) { alert('残りゲーム数は1以上で入力してください。'); return; }
+                if (isNaN(yourCurrentRank) || yourCurrentRank < 1 || yourCurrentRank > 24) { alert('あなたの現在の総合順位は1~24で入力してください。'); return; }
+                if (isNaN(yourStability) || yourStability < 0 || yourStability > 1) { alert('安定度は0~1の数値で入力してください。'); return; }
+                if (gamesPlayed > 0 && document.getElementById(`player-score-${yourCurrentRank}`).value === '') { alert(`あなたの現在の総合順位である「${yourCurrentRank}位」の点数も入力してください。`); return; }
+                if (isNaN(simulationCount) || simulationCount < 100) { alert('シミュレーション回数は100以上で入力してください。'); return; }
+
+                const resultBox = document.getElementById('prediction-result');
+                const progressBar = document.getElementById('progress-fill');
+                const graphWrapper = document.getElementById('score-graph-wrapper');
+                resultBox.style.display = 'none'; progressBar.style.width = '0%'; graphWrapper.style.display = 'none';
+
+                let players = Array.from({ length: this.TOTAL_PLAYERS }, (_, i) => {
+                    const scoreVal = document.getElementById(`player-score-${i + 1}`).value;
+                    return { rank: i + 1, score: scoreVal === '' ? null : parseInt(scoreVal), isYou: (i + 1 === yourCurrentRank) };
+                });
+                try { this.interpolateAndAdjustScores(players, gamesPlayed); } catch (e) { alert(e.message); return; }
+
+                const yourMeanRank = yourCurrentRank;
+                const yourSigma = Stability.mapStabilityToSigma(yourStability);
+                let successCount = 0; const yourFinalScores = []; const borderlineScores = [];
+
+                // 追跡対象のプレイヤーインデックスを決定（0試合なら誰でも良いので0番目、それ以外は入力された順位）
+                const playerToTrackIndex = gamesPlayed === 0 ? 0 : yourCurrentRank - 1;
+
+                for (let i = 0; i < simulationCount; i++) {
+                    let currentScores = players.map(p => p.score);
+
+                    for (let j = 0; j < remainingGames; j++) {
+                        let performance = players.map((p, index) => {
+                            // ★変更点：消化済みゲーム数が0の場合、全員の平均順位を12.5に、安定度を共通の値に設定
+                            const meanRankForSim = gamesPlayed === 0 ? 12.5 : (p.isYou ? yourMeanRank : p.rank);
+                            const sigmaForSim = gamesPlayed === 0 ? yourSigma : (p.isYou ? yourSigma : 8.0);
+                            return { index, perf: Utils.generateNormalRandom(meanRankForSim, sigmaForSim) };
+                        });
+                        performance.sort((a, b) => a.perf - b.perf);
+                        performance.forEach((p, rankIndex) => { currentScores[p.index] += Utils.getPointsByRank(rankIndex + 1); });
+                    }
+                    const finalResults = currentScores.map((score, index) => ({ index, score })).sort((a, b) => b.score - a.score);
+
+                    const trackedPlayerFinalRank = finalResults.findIndex(r => r.index === playerToTrackIndex) + 1;
+
+                    yourFinalScores.push(currentScores[playerToTrackIndex]);
+
+                    if (trackedPlayerFinalRank <= targetRank) {
+                        successCount++;
+                        if (finalResults.length >= targetRank) borderlineScores.push(finalResults[targetRank - 1].score);
+                    }
+
+                    if (i % (simulationCount / 100) === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                        progressBar.style.width = `${(i / simulationCount) * 100}%`;
+                    }
+                }
+
+                progressBar.style.width = '100%';
+                const probability = (successCount / simulationCount) * 100;
+                const avgBorderline = borderlineScores.length > 0 ? (borderlineScores.reduce((a, b) => a + b, 0) / borderlineScores.length).toFixed(2) : "N/A";
+
+                resultBox.style.display = 'block';
+                const resultTitle = gamesPlayed === 0 ? `プレイヤー1人あたりの${targetRank}位以上になる確率:` : `${targetRank}位以上になる確率:`;
+                resultBox.innerHTML = `${resultTitle} <strong>${probability.toFixed(2)}%</strong>
+                             <br><small>目標達成の平均ボーダー得点: <strong>${avgBorderline}点</strong></small>
+                             <br><small>(${simulationCount}回のシミュレーションに基づく)</small>`;
+
+                this.displayGraph(yourFinalScores);
+            },
+
+            displayGraph(finalScores) {
+                const graphWrapper = document.getElementById('score-graph-wrapper');
+                const container = document.getElementById('score-graph-container');
+                container.innerHTML = '';
+                const scoreCounts = finalScores.reduce((map, score) => { map[score] = (map[score] || 0) + 1; return map; }, {});
+                let mode = -1, maxCount = 0;
+                for (const score in scoreCounts) {
+                    if (scoreCounts[score] > maxCount) { maxCount = scoreCounts[score]; mode = parseInt(score); }
+                }
+                if (mode === -1 || maxCount === 0) return;
+
+                const graphData = []; const displayRange = 7;
+                for (let i = mode - displayRange; i <= mode + displayRange; i++) {
+                    graphData.push({ score: i, count: scoreCounts[i] || 0 });
+                }
+
+                graphData.forEach(({ score, count }) => {
+                    const item = document.createElement('div'); item.className = 'graph-bar-item';
+                    const barValue = document.createElement('div'); barValue.className = 'bar-value'; barValue.textContent = count;
+                    const bar = document.createElement('div'); bar.className = 'bar';
+                    bar.style.height = `${(count / maxCount) * 80}%`;
+                    if (score === mode) bar.style.backgroundColor = '#ffc107';
+                    const barLabel = document.createElement('div'); barLabel.className = 'bar-label'; barLabel.textContent = `${score}点`;
+                    item.appendChild(barValue); item.appendChild(bar); item.appendChild(barLabel);
+                    container.appendChild(item);
+                });
+                graphWrapper.style.display = 'block';
+            },
+
+            getBaselineScore(targetRank, points) {
+                if (points.length === 0) return 0;
+                if (points.length === 1) return points[0].score;
+                for (let i = 0; i < points.length - 1; i++) {
+                    if (points[i].rank <= targetRank && targetRank <= points[i + 1].rank) {
+                        const r1 = points[i].rank, s1 = points[i].score, r2 = points[i + 1].rank, s2 = points[i + 1].score;
+                        if (r1 === r2) return s1;
+                        return s1 + (s2 - s1) * (targetRank - r1) / (r2 - r1);
+                    }
+                }
+                if (targetRank < points[0].rank) {
+                    const r1 = points[0].rank, s1 = points[0].score, r2 = points[1].rank, s2 = points[1].score;
+                    return s1 + (s2 - s1) * (targetRank - r1) / (r2 - r1);
+                } else {
+                    const r1 = points[points.length - 2].rank, s1 = points[points.length - 2].score, r2 = points[points.length - 1].rank, s2 = points[points.length - 1].score;
+                    return s1 + (s2 - s1) * (targetRank - r1) / (r2 - r1);
+                }
+            },
+
+            interpolateAndAdjustScores(players, gamesPlayed) {
+                if (gamesPlayed === 0) {
+                    players.forEach(p => p.score = 0);
+                    return;
+                }
+                const totalExpectedPoints = 144 * gamesPlayed;
+                const knownPlayers = players.filter(p => p.score !== null).sort((a, b) => a.rank - b.rank);
+                const unknownPlayers = players.filter(p => p.score === null);
+                if (unknownPlayers.length === 0) return;
+                if (knownPlayers.length === 0) throw new Error("最低一人の点数を入力してください。");
+
+                const sumOfKnownScores = knownPlayers.reduce((sum, p) => sum + p.score, 0);
+                if (sumOfKnownScores > totalExpectedPoints) throw new Error("入力された点数の合計が、消化済みゲーム数の合計点を上回っています。");
+
+                const pointsForUnknown = totalExpectedPoints - sumOfKnownScores;
+                let sumOfBaselineScores = 0;
+                unknownPlayers.forEach(p => {
+                    p.baselineScore = Math.max(0, this.getBaselineScore(p.rank, knownPlayers));
+                    sumOfBaselineScores += p.baselineScore;
+                });
+
+                if (sumOfBaselineScores === 0) {
+                    unknownPlayers.forEach(p => p.score = Math.round(pointsForUnknown / unknownPlayers.length));
+                } else {
+                    const adjustmentRatio = pointsForUnknown / sumOfBaselineScores;
+                    unknownPlayers.forEach(p => {
+                        p.score = Math.round(p.baselineScore * adjustmentRatio);
+                    });
+                }
+            }
+        };
+
+        // --- 初期化処理 ---
+        window.onload = () => {
+            Stability.init();
+            Prediction.init();
+            openTab({ currentTarget: document.querySelector('.tab-button') }, 'prediction');
+            document.querySelector('.tab-button[onclick*="stability"]').classList.remove('active');
+            document.querySelector('.tab-button[onclick*="prediction"]').classList.add('active');
+        };
+
+    </script>
+</body>
+
+</html>
