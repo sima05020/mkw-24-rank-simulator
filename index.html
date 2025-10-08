@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>24人制順位予測・安定度計算ツール (最終版)</title>
+    <title>24人制順位予測・安定度計算ツール</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -217,7 +217,7 @@
 <body>
 
     <div class="container">
-        <h1>24人制順位予測・安定度計算ツール (最終版)</h1>
+        <h1>24人制順位予測・安定度計算ツール</h1>
 
         <div class="tabs">
             <button class="tab-button" onclick="openTab(event, 'prediction')">順位予測</button>
@@ -246,11 +246,11 @@
                 <div><label for="target-rank">目標順位 (X位以上):</label><input type="number" id="target-rank" min="1" max="24"
                         value="6"></div>
                 <div><label for="games-played">消化済みゲーム数:</label><input type="number" id="games-played" min="0"
-                        value="0"></div>
-                <div><label for="remaining-games">残りゲーム数:</label><input type="number" id="remaining-games" min="1"
-                        value="12"></div>
+                        value="6"></div>
+                <div><label for="remaining-games">残りレース数:</label><input type="number" id="remaining-games" min="1"
+                        value="6"></div>
                 <div><label for="your-current-rank">あなたの現在の総合順位:</label><input type="number" id="your-current-rank"
-                        min="1" max="24" value="1"></div>
+                        min="1" max="24" value="8"></div>
                 <div><label for="your-stability">あなたの安定度 (0~1):</label><input type="number" id="your-stability" min="0"
                         max="1" step="0.01" value="0.5"></div>
                 <div><label for="simulation-count">シミュレーション回数:</label><input type="number" id="simulation-count"
@@ -285,13 +285,39 @@
 
         // --- 共通ユーティリティ ---
         const Utils = {
-            getPointsByRank: (rank) => [0, 15, 12, 10, 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 1][rank] || 0,
+            rankPoints: [0, 15, 12, 10, 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 1],
+            getPointsByRank(rank) { return this.rankPoints[rank] || 0; },
             generateNormalRandom: (mean, stdDev) => {
                 let u1 = 0, u2 = 0;
                 while (u1 === 0) u1 = Math.random();
                 while (u2 === 0) u2 = Math.random();
                 const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
                 return z0 * stdDev + mean;
+            },
+            // ★追加: 平均スコアから最も近い順位を算出する関数
+            getRankFromAvgScore(avgScore) {
+                let closestRank = 1;
+                let minDiff = Infinity;
+
+                // 1. 最も差が小さい順位を見つける
+                for (let rank = 1; rank < this.rankPoints.length; rank++) {
+                    const diff = Math.abs(this.rankPoints[rank] - avgScore);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closestRank = rank;
+                    }
+                }
+
+                // 2. 同じ点数で複数の順位がある場合、その平均を返す（例：9点なら4位と5位の平均4.5）
+                const closestScore = this.rankPoints[closestRank];
+                const tiedRanks = [];
+                for (let rank = 1; rank < this.rankPoints.length; rank++) {
+                    if (this.rankPoints[rank] === closestScore) {
+                        tiedRanks.push(rank);
+                    }
+                }
+
+                return tiedRanks.reduce((sum, r) => sum + r, 0) / tiedRanks.length;
             }
         };
 
@@ -386,8 +412,8 @@
                 const yourStability = parseFloat(document.getElementById('your-stability').value);
                 const simulationCount = parseInt(document.getElementById('simulation-count').value);
                 if (isNaN(targetRank) || targetRank < 1 || targetRank > 24) { alert('目標順位は1~24で入力してください。'); return; }
-                if (isNaN(gamesPlayed) || gamesPlayed < 0) { alert('消化済みゲーム数は0以上で入力してください。'); return; }
-                if (isNaN(remainingGames) || remainingGames < 1) { alert('残りゲーム数は1以上で入力してください。'); return; }
+                if (isNaN(gamesPlayed) || gamesPlayed < 0) { alert('消化済みレース数は0以上で入力してください。'); return; }
+                if (isNaN(remainingGames) || remainingGames < 1) { alert('残りレース数は1以上で入力してください。'); return; }
                 if (isNaN(yourCurrentRank) || yourCurrentRank < 1 || yourCurrentRank > 24) { alert('あなたの現在の総合順位は1~24で入力してください。'); return; }
                 if (isNaN(yourStability) || yourStability < 0 || yourStability > 1) { alert('安定度は0~1の数値で入力してください。'); return; }
                 if (gamesPlayed > 0 && document.getElementById(`player-score-${yourCurrentRank}`).value === '') { alert(`あなたの現在の総合順位である「${yourCurrentRank}位」の点数も入力してください。`); return; }
@@ -404,22 +430,28 @@
                 });
                 try { this.interpolateAndAdjustScores(players, gamesPlayed); } catch (e) { alert(e.message); return; }
 
-                const yourMeanRank = yourCurrentRank;
+                // ★変更点: 各プレイヤーの平均スコアから「実力上の平均順位」を計算
+                players.forEach(p => {
+                    if (gamesPlayed > 0) {
+                        const avgScore = p.score / gamesPlayed;
+                        p.meanRankForSim = Utils.getRankFromAvgScore(avgScore);
+                    } else {
+                        p.meanRankForSim = 12.5; // 0試合なら全員中央値
+                    }
+                });
+
                 const yourSigma = Stability.mapStabilityToSigma(yourStability);
                 let successCount = 0; const yourFinalScores = []; const borderlineScores = [];
-
-                // 追跡対象のプレイヤーインデックスを決定（0試合なら誰でも良いので0番目、それ以外は入力された順位）
-                const playerToTrackIndex = gamesPlayed === 0 ? 0 : yourCurrentRank - 1;
+                const playerToTrackIndex = yourCurrentRank - 1;
 
                 for (let i = 0; i < simulationCount; i++) {
                     let currentScores = players.map(p => p.score);
 
                     for (let j = 0; j < remainingGames; j++) {
                         let performance = players.map((p, index) => {
-                            // ★変更点：消化済みゲーム数が0の場合、全員の平均順位を12.5に、安定度を共通の値に設定
-                            const meanRankForSim = gamesPlayed === 0 ? 12.5 : (p.isYou ? yourMeanRank : p.rank);
-                            const sigmaForSim = gamesPlayed === 0 ? yourSigma : (p.isYou ? yourSigma : 8.0);
-                            return { index, perf: Utils.generateNormalRandom(meanRankForSim, sigmaForSim) };
+                            // ★変更点: シミュレーションの基準を「実力上の平均順位」に変更
+                            const sigmaForSim = p.isYou ? yourSigma : (gamesPlayed === 0 ? yourSigma : 8.0);
+                            return { index, perf: Utils.generateNormalRandom(p.meanRankForSim, sigmaForSim) };
                         });
                         performance.sort((a, b) => a.perf - b.perf);
                         performance.forEach((p, rankIndex) => { currentScores[p.index] += Utils.getPointsByRank(rankIndex + 1); });
@@ -446,7 +478,7 @@
                 const avgBorderline = borderlineScores.length > 0 ? (borderlineScores.reduce((a, b) => a + b, 0) / borderlineScores.length).toFixed(2) : "N/A";
 
                 resultBox.style.display = 'block';
-                const resultTitle = gamesPlayed === 0 ? `プレイヤー1人あたりの${targetRank}位以上になる確率:` : `${targetRank}位以上になる確率:`;
+                const resultTitle = `${targetRank}位以上になる確率:`;
                 resultBox.innerHTML = `${resultTitle} <strong>${probability.toFixed(2)}%</strong>
                              <br><small>目標達成の平均ボーダー得点: <strong>${avgBorderline}点</strong></small>
                              <br><small>(${simulationCount}回のシミュレーションに基づく)</small>`;
@@ -514,7 +546,7 @@
                 if (knownPlayers.length === 0) throw new Error("最低一人の点数を入力してください。");
 
                 const sumOfKnownScores = knownPlayers.reduce((sum, p) => sum + p.score, 0);
-                if (sumOfKnownScores > totalExpectedPoints) throw new Error("入力された点数の合計が、消化済みゲーム数の合計点を上回っています。");
+                if (sumOfKnownScores > totalExpectedPoints) throw new Error("入力された点数の合計が、消化済みレース数の合計点を上回っています。");
 
                 const pointsForUnknown = totalExpectedPoints - sumOfKnownScores;
                 let sumOfBaselineScores = 0;
